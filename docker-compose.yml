@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  django:
+    container_name: sphere-django
+    build:
+      context: .
+      dockerfile: .docker/django/Dockerfile
+      args:
+        DEPENDENCIES_DIR: /backend/sphere_backend
+        SCRIPT_DIR: /.docker/django
+    restart: always
+    expose:
+      - 8000
+    command: >
+      sh -c "python manage.py runserver 0.0.0.0:8000"
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend/sphere_backend:/usr/src/app/
+      - ./backend/sphere_backend/static:/usr/src/app/static
+    networks:
+      - sphere_network
+    env_file:
+      - ./.env
+
+  node:
+    container_name: sphere-node
+    build:
+      context: ./frontend
+      dockerfile: ../.docker/react/Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/public/:/usr/src/app/public/
+      - ./frontend/src/:/usr/src/app/src/
+    command: npm start
+    depends_on:
+      - django
+    networks:
+      - sphere_network
+  
+  postgres:
+    container_name: sphere-postgres
+    image: postgres:${POSTGRES_VERSION:-15}-alpine
+    ports:
+      - "${PG_EXTERNAL_PORT:-54321}:5432"
+    expose:
+      - "${PG_EXTERNAL_PORT:-54321}"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      # You should definitely change the password in production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+    volumes:
+      - sphere_postgres_volume:/var/lib/postgresql/data/
+    networks:
+      - sphere_network
+    env_file:
+      - ./.env
+  
+  nginx:
+    container_name: sphere-nginx
+    build:
+      context: .
+      dockerfile: .docker/nginx/Dockerfile
+      args:
+        CONF_DIR: /.docker/nginx
+    networks:
+      - sphere_network
+    ports:
+      - "8899:80"
+    depends_on:
+      - django
+    volumes:
+      - ./backend/sphere_backend/static:/home/src/app/static
+
+volumes:
+  sphere_postgres_volume:
+
+networks:
+  sphere_network:
+    driver: bridge
